@@ -34,20 +34,18 @@ async fn handler(workspace: &str, channel: &str, sm: SlackMessage) {
     if let Ok(_) = Uri::try_from(sm.text.as_ref()) {
         if let Some(text) = test_scraper_integration(&sm.text).await {
             test_openai_integration_summary(text).await;
+            return;
         }
-        return;
     }
 
     if sm.text.starts_with(private_test_trigger) {
         let sys_prompt = "As a chat bot";
         let user_prompt = &format!("given user input: {:?}, please give a funny reply", sm.text);
 
-        let res = custom_gpt(sys_prompt, user_prompt);
-        send_message_to_channel("ik8", "ch_mid", res.to_string());
+        if let Some(res) = custom_gpt(sys_prompt, user_prompt) {
+            send_message_to_channel("ik8", "ch_mid", res.to_string());
+        }
 
-        // test_chat(sm.text).await;
-        return;
-    } else {
         return;
     }
 
@@ -122,7 +120,7 @@ async fn test_openai_integration_summary(text_inp: String) {
 }
 
 #[tokio::main(flavor = "current_thread")]
-pub async fn custom_gpt(sys_prompt: &str, user_prompt: &str) -> String {
+pub async fn custom_gpt(sys_prompt: &str, user_prompt: &str) -> Option<String> {
     let system_prompt = serde_json::json!(
         {"role": "system", "content": sys_prompt}
     );
@@ -131,9 +129,9 @@ pub async fn custom_gpt(sys_prompt: &str, user_prompt: &str) -> String {
     );
 
     if let Ok((res, _)) = chat(vec![system_prompt, user_prompt]).await {
-        return res;
+        return Some(res);
     }
-    "".to_string()
+    None
 }
 
 pub async fn chat(message_obj: Vec<Value>) -> Result<(String, String), anyhow::Error> {
