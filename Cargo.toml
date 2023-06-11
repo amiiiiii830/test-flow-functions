@@ -1,0 +1,21 @@
+[package]
+name = "test-flow-functions"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+slack-flows = "0.2.6"
+tokio_wasi = { version = "1.25.0", features = ["macros", "rt"] }
+dotenv = "0.15.0"
+openai-flows = "0.7.1"
+tiktoken-rs = "0.2.2"
+chrono = "0.4.24"
+web-scraper-flows = "0.1.0"
+serde = { version = "1.0.164", features = ["derive"] }
+http_req_wasi = { version = "0.10.2", features = ["wasmedge_ssl"] }
+serde_json = "1.0.96"
+anyhow = "1.0.71"
