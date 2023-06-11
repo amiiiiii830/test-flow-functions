@@ -39,6 +39,8 @@ async fn handler(workspace: &str, channel: &str, sm: SlackMessage) {
     }
 
     if sm.text.starts_with(private_test_trigger) {
+        send_message_to_channel("ik8", "ch_in", sm.text.to_string());
+
         let sys_prompt = "As a chat bot";
         let user_prompt = &format!("given user input: {:?}, please give a funny reply", sm.text);
 
