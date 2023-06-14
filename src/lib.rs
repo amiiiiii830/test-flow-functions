@@ -11,49 +11,58 @@ use slack_flows::{listen_to_channel, send_message_to_channel, SlackMessage};
 use std::env;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tiktoken_rs::cl100k_base;
+use tokio;
 use web_scraper_flows::get_page_text;
 
 #[no_mangle]
-pub fn run() {
+#[tokio::main(flavor = "current_thread")]
+pub async fn run() {
     dotenv().ok();
 
     let slack_workspace = env::var("slack_workspace").unwrap_or("secondstate".to_string());
     let slack_channel = env::var("slack_channel").unwrap_or("github-status".to_string());
 
     listen_to_channel(&slack_workspace, &slack_channel, |sm| {
-        handler(&slack_workspace, &slack_channel, sm);
-    });
+        handler(&slack_workspace, &slack_channel, sm.text)
+    })
+    .await;
 }
 
-#[no_mangle]
-#[tokio::main(flavor = "current_thread")]
-async fn handler(workspace: &str, channel: &str, sm: SlackMessage) {
+async fn handler(workspace: &str, channel: &str, text: String) {
     let flow_test_trigger = "hacker";
     let private_test_trigger = "private";
 
-    if let Ok(_) = Uri::try_from(sm.text.as_ref()) {
-        if let Some(text) = test_scraper_integration(&sm.text).await {
-            test_openai_integration_summary(text).await;
+    if let Ok(_) = Uri::try_from(text.as_ref()) {
+        if let Some(clean_text) = test_scraper_integration(&text).await {
+            test_openai_integration_summary(clean_text).await;
             return;
         }
     }
 
-    if sm.text.starts_with(private_test_trigger) {
-        send_message_to_channel("ik8", "ch_in", sm.text.to_string());
+    if text.starts_with(private_test_trigger) {
+        let mut openai = OpenAIFlows::new();
+        openai.set_retry_times(3);
 
-        let sys_prompt = "As a chat bot";
-        let user_prompt = &format!("given user input: {:?}, please give a funny reply", sm.text);
+        let chat_id = format!("converstation N");
+        let system = &format!("You're a chatbot.");
 
-        if let Some(res) = custom_gpt(sys_prompt, user_prompt) {
-            send_message_to_channel("ik8", "ch_mid", res.to_string());
+        let co = ChatOptions {
+            model: ChatModel::GPT35Turbo,
+            restart: true,
+            system_prompt: Some(system),
+        };
+
+        let msg_text = text
+            .split_whitespace()
+            .skip(1)
+            .collect::<Vec<&str>>()
+            .join(" ");
+        let question = format!("given user input: {msg_text}, please repond in a funny way");
+        match openai.chat_completion(&chat_id, &question, &co).await {
+            Ok(r) => send_message_to_channel("ik8", "ch_mid", r.choice).await,
+            Err(_e) => {}
         }
-
-        return;
     }
-
-    // let keyword = std::env::var("KEYWORD").unwrap_or("chatGPT".to_string());
-
-    // let query = keyword;
 }
 
 async fn test_scraper_integration(url_inp: &str) -> Option<String> {
