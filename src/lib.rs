@@ -7,11 +7,11 @@ use openai_flows::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use slack_flows::{listen_to_channel, send_message_to_channel, SlackMessage};
+use slack_flows::{listen_to_channel, send_message_to_channel};
 use std::env;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tiktoken_rs::cl100k_base;
 use tokio;
+use tiktoken_rs::cl100k_base;
 use web_scraper_flows::get_page_text;
 
 #[no_mangle]
@@ -40,28 +40,14 @@ async fn handler(workspace: &str, channel: &str, text: String) {
     }
 
     if text.starts_with(private_test_trigger) {
-        let mut openai = OpenAIFlows::new();
-        openai.set_retry_times(3);
-
-        let chat_id = format!("converstation N");
-        let system = &format!("You're a chatbot.");
-
-        let co = ChatOptions {
-            model: ChatModel::GPT35Turbo,
-            restart: true,
-            system_prompt: Some(system),
-        };
-
         let msg_text = text
             .split_whitespace()
             .skip(1)
             .collect::<Vec<&str>>()
             .join(" ");
-        let question = format!("given user input: {msg_text}, please repond in a funny way");
-        match openai.chat_completion(&chat_id, &question, &co).await {
-            Ok(r) => send_message_to_channel("ik8", "ch_mid", r.choice).await,
-            Err(_e) => {}
-        }
+
+        test_flows_chat(&msg_text);
+        private_test(&msg_text);
     }
 }
 
@@ -75,7 +61,7 @@ async fn test_scraper_integration(url_inp: &str) -> Option<String> {
     None
 }
 
-async fn test_chat(text_inp: String) {
+async fn test_flows_chat(text_inp: &str) {
     let mut openai = OpenAIFlows::new();
     openai.set_retry_times(3);
 
@@ -92,7 +78,7 @@ async fn test_chat(text_inp: String) {
 
     match openai.chat_completion(&chat_id, &question, &co).await {
         Ok(r) => {
-            send_message_to_channel("ik8", "general", r.choice.clone());
+            send_message_to_channel("ik8", "general", r.choice.clone()).await;
         }
         Err(_e) => {}
     }
@@ -130,22 +116,31 @@ async fn test_openai_integration_summary(text_inp: String) {
     }
 }
 
-#[tokio::main(flavor = "current_thread")]
-pub async fn custom_gpt(sys_prompt: &str, user_prompt: &str) -> Option<String> {
+pub async fn private_test(inp: &str) {
+    let system_prompt = "You're a chatbot";
+    let user_prompt = &format!("given user input: {inp}, please reply in a funny way");
+
+    if let Some(res) = custom_gpt(system_prompt, user_prompt, 50).await {
+        send_message_to_channel("ik8", "ch_err", res).await;
+    }
+}
+
+
+pub async fn custom_gpt(sys_prompt: &str, u_prompt: &str, m_token: u16) -> Option<String> {
     let system_prompt = serde_json::json!(
         {"role": "system", "content": sys_prompt}
     );
     let user_prompt = serde_json::json!(
-        {"role": "user", "content": user_prompt}
+        {"role": "user", "content": u_prompt}
     );
 
-    if let Ok((res, _)) = chat(vec![system_prompt, user_prompt]).await {
-        return Some(res);
+    match chat(vec![system_prompt, user_prompt], m_token).await {
+        Ok((res, _count)) => Some(res),
+        Err(_) => None,
     }
-    None
 }
 
-pub async fn chat(message_obj: Vec<Value>) -> Result<(String, String), anyhow::Error> {
+pub async fn chat(message_obj: Vec<Value>, m_token: u16) -> Result<(String, u32), anyhow::Error> {
     dotenv().ok();
     let api_token = env::var("OPENAI_API_TOKEN")?;
 
@@ -156,7 +151,7 @@ pub async fn chat(message_obj: Vec<Value>) -> Result<(String, String), anyhow::E
       "top_p": 1,
       "n": 1,
       "stream": false,
-      "max_tokens": 256,
+      "max_tokens": m_token,
       "presence_penalty": 0,
       "frequency_penalty": 0,
       "stop": "\n"
@@ -177,16 +172,16 @@ pub async fn chat(message_obj: Vec<Value>) -> Result<(String, String), anyhow::E
         .body(&body)
         .send(&mut writer)?;
 
-    // println!("Raw JSON: {}", String::from_utf8_lossy(&writer));
     let res = serde_json::from_slice::<ChatResponse>(&writer)?;
-    let finish_reason = res.choices[0].finish_reason.clone();
-    Ok((res.choices[0].message.content.to_string(), finish_reason))
+    let token_count = res.usage.total_tokens;
+    Ok((res.choices[0].message.content.to_string(), token_count))
 }
 
 #[derive(Deserialize)]
 pub struct ChatResponse {
     pub id: String,
     pub choices: Vec<Choice>,
+    pub usage: Usage,
 }
 
 #[derive(Deserialize)]
@@ -200,4 +195,11 @@ pub struct Choice {
 pub struct Message {
     pub role: String,
     pub content: String,
+}
+
+#[derive(Deserialize)]
+pub struct Usage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    pub total_tokens: u32,
 }
