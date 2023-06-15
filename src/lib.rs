@@ -54,7 +54,7 @@ async fn handler(workspace: &str, channel: &str, text: String) {
 
 async fn test_scraper_integration(url_inp: &str) -> Option<String> {
     if let Ok(res) = get_page_text(url_inp).await {
-        send_message_to_channel("ik8", "ch_mid", res.to_string());
+        send_message_to_channel("ik8", "general", res.to_string()).await;
 
         return Some(res.to_string());
     }
@@ -81,7 +81,7 @@ async fn test_flows_chat(text_inp: &str) {
         Ok(r) => {
             send_message_to_channel("ik8", "general", r.choice.clone()).await;
         }
-        Err(_e) => {            send_message_to_channel("ik8", "ch_err", _e.to_string()).await;
+        Err(_e) => {            send_message_to_channel("ik8", "general", _e.to_string()).await;
     }
     }
 }
