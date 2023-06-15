@@ -34,6 +34,7 @@ async fn handler(workspace: &str, channel: &str, text: String) {
 
     if let Ok(_) = Uri::try_from(text.as_ref()) {
         if let Some(clean_text) = test_scraper_integration(&text).await {
+            
             test_openai_integration_summary(clean_text).await;
             return;
         }
@@ -80,7 +81,8 @@ async fn test_flows_chat(text_inp: &str) {
         Ok(r) => {
             send_message_to_channel("ik8", "general", r.choice.clone()).await;
         }
-        Err(_e) => {}
+        Err(_e) => {            send_message_to_channel("ik8", "ch_err", _e.to_string()).await;
+    }
     }
 }
 
